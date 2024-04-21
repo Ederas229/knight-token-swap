@@ -87,6 +87,7 @@ jobs:
           path: dist
 
   publish:
+    permissions: write-all
     needs:
       # - lint
       - build
