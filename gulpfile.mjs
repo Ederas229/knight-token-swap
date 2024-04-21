@@ -3,18 +3,18 @@
 //
 // SPDX-License-Identifier: MIT
 
-import fs from 'fs-extra'
-import gulp from 'gulp'
-import sourcemaps from 'gulp-sourcemaps'
-import path from 'node:path'
-import buffer from 'vinyl-buffer'
-import source from 'vinyl-source-stream'
-import yargs from 'yargs'
-import { hideBin } from 'yargs/helpers'
+import fs from 'fs-extra';
+import gulp from 'gulp';
+import sourcemaps from 'gulp-sourcemaps';
+import path from 'node:path';
+import buffer from 'vinyl-buffer';
+import source from 'vinyl-source-stream';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
 
-import rollupStream from '@rollup/stream'
+import rollupStream from '@rollup/stream';
 
-import rollupConfig from './rollup.config.mjs'
+import rollupConfig from './rollup.config.mjs';
 
 /********************/
 /*  CONFIGURATION   */
@@ -38,7 +38,7 @@ let cache;
  * Build the distributable JavaScript code
  */
 function buildCode() {
-  return rollupStream({...rollupConfig(), cache })
+  return rollupStream({ ...rollupConfig(), cache })
     .on('bundle', (bundle) => {
       cache = bundle;
     })
@@ -54,7 +54,7 @@ function buildCode() {
  */
 function buildStyles() {
   return gulp
-    .src(`${stylesDirectory}/${packageId}.${stylesExtension}`)
+    .src(`${stylesDirectory}/${packageId}.${stylesExtension}`, { allowEmpty: true })
     .pipe(gulp.dest(`${distDirectory}/styles`));
 }
 
@@ -121,8 +121,10 @@ function getDataPaths() {
     const dataPaths = Array.isArray(dataPath) ? dataPath : [dataPath];
 
     return dataPaths.map((dataPath) => {
-      if(typeof dataPath !== 'string') {
-        throw new Error(`Property dataPath in foundryconfig.json is expected to be a string or an array of strings, but found ${dataPath}`);
+      if (typeof dataPath !== 'string') {
+        throw new Error(
+          `Property dataPath in foundryconfig.json is expected to be a string or an array of strings, but found ${dataPath}`,
+        );
       }
       if (!fs.existsSync(path.resolve(dataPath))) {
         throw new Error(`The dataPath ${dataPath} does not exist on the file system`);
