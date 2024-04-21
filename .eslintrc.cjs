@@ -6,7 +6,7 @@
 module.exports = {
   parserOptions: {
     ecmaVersion: 2020,
-    extraFileExtensions: [],
+    extraFileExtensions: ['.cjs', '.mjs'],
     sourceType: 'module',
   },
 
@@ -24,6 +24,7 @@ module.exports = {
 
   overrides: [
     {
+      files: ['./*.js', './*.cjs', './*.mjs'],
       env: {
         node: true,
       },
