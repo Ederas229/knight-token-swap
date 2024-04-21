@@ -8,32 +8,20 @@
     }
   ],
   "url": "This is auto replaced",
-  "license": "<please choose an appropriate license. https://choosealicense.com/ is a great place to get more information if you are unsure>",
-  "readme": "<optionally the URL to your readme>",
-  "bugs": "<optionally the URL to your issue list>",
-  "changelog": "<optionally the URL to your changelog>",
   "version": "This is auto replaced",
   "compatibility": {
-    "minimum": "10",
-    "verified": "10"
+    "minimum": "11",
+    "verified": "11"
   },
-  "scripts": [],
   "esmodules": [
     "module/knight-token-swap.js"
   ],
-  "styles": [
-    "styles/knight-token-swap.css"
-  ],
-  "packs": [],
-  "languages": [
-    {
-      "lang": "en",
-      "name": "English",
-      "path": "lang/en.json"
-    }
-  ],
   "relationships": {
-    "systems": [],
+    "systems": [
+      {
+        "id": "knight",
+        "type": "system"
+      }],
     "requires": [],
     "conflicts": []
   },

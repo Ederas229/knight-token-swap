@@ -6,12 +6,6 @@ SPDX-License-Identifier: MIT
 
 # knight-token-swap
 
-Please add your description here.
-
-## Installation
-
-Please add your installation instructions here.
-
 ## Development
 
 ### Prerequisites
@@ -88,10 +82,5 @@ instructions given there.
 This project is being developed under the terms of the
 [LIMITED LICENSE AGREEMENT FOR MODULE DEVELOPMENT] for Foundry Virtual Tabletop.
 
-Please add your licensing information here. Add your chosen license as
-`LICENSE` file to the project root and mention it here.  If you don't know which
-license to choose, take a look at [Choose an open source license].
-
 [League Basic JS Module Template]: https://github.com/League-of-Foundry-Developers/FoundryVTT-Module-Template
 [LIMITED LICENSE AGREEMENT FOR MODULE DEVELOPMENT]: https://foundryvtt.com/article/license/
-[Choose an open source license]: https://choosealicense.com/
