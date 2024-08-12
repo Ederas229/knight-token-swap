@@ -151,6 +151,7 @@ export async function link() {
     path.resolve(dataPath, 'Data', destinationDirectory, packageId),
   );
 
+  // eslint-disable-next-line no-undef
   const argv = yargs(hideBin(process.argv)).option('clean', {
     alias: 'c',
     type: 'boolean',
