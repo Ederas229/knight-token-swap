@@ -25,7 +25,7 @@
     "clean": "gulp clean",
     "clean:link": "gulp link --clean",
     "lint": "eslint .",
-    "lint:fix": "eslint --ext .js,.cjs,.mjs --fix .",
+    "lint:fix": "eslint --fix .",
     "format": "prettier --write \"./**/*.(js|cjs|mjs|json|yml|css)\"",
     "postinstall": "husky install",
     "prepare": "husky"
