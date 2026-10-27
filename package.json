@@ -26,9 +26,7 @@
     "clean:link": "gulp link --clean",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
-    "format": "prettier --write \"./**/*.(js|cjs|mjs|json|yml|css)\"",
-    "postinstall": "husky install",
-    "prepare": "husky"
+    "format": "prettier --write \"./**/*.(js|cjs|mjs|json|yml|css)\""
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.1.0",
