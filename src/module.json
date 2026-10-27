@@ -13,15 +13,14 @@
     "minimum": "11",
     "verified": "13"
   },
-  "esmodules": [
-    "module/knight-token-swap.js"
-  ],
+  "esmodules": ["module/knight-token-swap.js"],
   "relationships": {
     "systems": [
       {
         "id": "knight",
         "type": "system"
-      }],
+      }
+    ],
     "requires": [],
     "conflicts": []
   },
