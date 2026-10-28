@@ -27,9 +27,16 @@ export default [
     languageOptions: {
       globals: {
         ...globals.browser,
+        foundry: 'readonly',
+        Hooks: 'readonly',
+        game: 'readonly',
+        canvas: 'readonly',
+        ui: 'readonly',
+        CONFIG: 'readonly',
+        CONST: 'readonly',
       },
 
-      ecmaVersion: 2020,
+      ecmaVersion: 2023,
       sourceType: 'module',
 
       parserOptions: {
