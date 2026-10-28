@@ -1,0 +1,9 @@
+/* Spacing between the rows of the Token Images window. The rows are flex
+ * children of the template's .flexcol container, and core sets
+ * .standard-form .form-group { margin: 0 }, so the gap has to be applied to
+ * the container. Using row-gap only leaves the 0.5rem core gap inside each
+ * row between the label and its file picker untouched.
+ */
+.application.multi-token-config .flexcol {
+  row-gap: 15px;
+}
