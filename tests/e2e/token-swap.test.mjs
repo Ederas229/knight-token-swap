@@ -50,12 +50,20 @@ await step('environment: knight world, GM session, module active', async () => {
       system: game.system.id,
       gm: game.user.isGM,
       active: game.modules.get(moduleId)?.active === true,
+      description: game.modules.get(moduleId)?.description ?? '',
+      languages: [...(game.modules.get(moduleId)?.languages ?? [])].map((l) => l.lang),
     }),
     MODULE_ID,
   );
   assert.equal(env.system, 'knight', `world system is "${env.system}", expected knight`);
   assert.equal(env.gm, true, 'login is not a GM session');
   assert.equal(env.active, true, 'knight-token-swap is not active in the world');
+  assert.ok(env.description.length > 40, `manifest description is only ${env.description.length} characters`);
+  assert.deepEqual(
+    [...env.languages].sort(),
+    ['en', 'fr'],
+    `manifest declares languages: ${env.languages.join(', ') || 'none'}`,
+  );
 });
 
 // -------------------------------------------------------------------- fixture
