@@ -60,18 +60,30 @@ Hooks.on('getHeaderControlsKnightSheet', (sheet, controls) => {
 /**
  * Sync freshly-drawn tokens; applyTokenTexture no-ops when the texture
  * already matches, so scene loads issue no writes for correct tokens.
+ * Core never awaits hook listeners, so each sync is caught and logged:
+ * without this, failures would surface only as unhandled rejections.
  */
 Hooks.on('drawToken', async (token) => {
   if (!token.actor?.isOwner) return;
   if (!isModuleManaged(token)) return;
-  await applyTokenTexture(token);
+  try {
+    await applyTokenTexture(token);
+  } catch (err) {
+    console.warn('knight-token-swap | token texture sync failed on draw:', err);
+  }
 });
 
 /**
- * Hook runs before the update commits, so the new wear is passed explicitly.
+ * Re-apply (or restore) textures as soon as wear changes, for any actor type
+ * carrying a wear field (Knight and PNJ do); the per-token managed gate keeps
+ * unconfigured actors untouched. The hook runs before the update commits, so
+ * the new wear is passed explicitly.
  */
 Hooks.on('preUpdateActor', async (actor, data) => {
-  if (actor.type !== 'knight') return;
   if (!(data.system && 'wear' in data.system)) return;
-  await applyTokenTexturesForActor(actor, data.system.wear);
+  try {
+    await applyTokenTexturesForActor(actor, data.system.wear);
+  } catch (err) {
+    console.warn(`knight-token-swap | texture sync failed for actor ${actor.name}:`, err);
+  }
 });

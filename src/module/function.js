@@ -1,6 +1,10 @@
 import { MODULENAME } from './const.js';
 
-/** Actor flag keys holding the three configurable textures. */
+/**
+ * Actor flag keys holding the three configurable textures. Deliberate gap:
+ * the system's fourth wear state (`ascension`) gets no texture by design —
+ * a knight entering it restores the token's pre-swap artwork.
+ */
 export const TEXTURE_FLAGS = ['armure', 'guardian', 'tenueCivile'];
 
 /**
