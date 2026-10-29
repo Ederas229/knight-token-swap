@@ -66,11 +66,14 @@ await step('fixture: knight actor and scene token on the canvas', async () => {
     async () => {
       for (const actor of game.actors.filter((a) => a.name?.startsWith('E2E '))) await actor.delete();
 
-      // Counts every token write the world makes; used to assert the module
-      // writes exactly once per swap and never on a no-op path.
+      // Counts token writes for the tokens these tests own. Scoped by id on
+      // purpose: an unscoped counter also counts unrelated world writes and
+      // then reports counts that look right but mean nothing.
       window.__ktsUpdates = 0;
-      Hooks.on('preUpdateToken', () => {
-        window.__ktsUpdates += 1;
+      window.__ktsTracked = new Set();
+      window.__ktsTrack = (id) => window.__ktsTracked.add(id);
+      Hooks.on('preUpdateToken', (doc) => {
+        if (window.__ktsTracked.has(doc.id)) window.__ktsUpdates += 1;
       });
 
       // Read token documents from the scene collection: committed writes land
@@ -99,6 +102,7 @@ await step('fixture: knight actor and scene token on the canvas', async () => {
 
       const actor = await Actor.create({ name: 'E2E Knight', type: 'knight' });
       const tokenDoc = await TokenDocument.create({ actorId: actor.id, x: 4, y: 4 }, { parent: canvas.scene });
+      window.__ktsTrack(tokenDoc.id);
       const rendered = await window.__ktsPoll(
         () => canvas.tokens.placeables.some((t) => t.document.id === tokenDoc.id) || undefined,
       );
@@ -116,6 +120,52 @@ await step('fixture: knight actor and scene token on the canvas', async () => {
 
   assert.ok(TEXTURES[knight.wear], `unexpected default wear: ${knight.wear}`);
   assert.ok(knight.originalSrc, 'fixture token has no texture to back up');
+});
+
+// ------------------------------------------ counter hygiene: only count our own
+
+await step('write counter ignores tokens the suite does not own', async () => {
+  const r = await fw.executeInFoundry(async () => {
+    // Actorless token: outside the module's reach, outside the suite's tracking.
+    const stranger = await TokenDocument.create({ x: 12, y: 12, name: 'E2E untracked' }, { parent: canvas.scene });
+    const before = window.__ktsUpdates;
+    await stranger.update({ name: 'renamed by the counter probe' });
+    const landed = await window.__ktsPoll(
+      () => canvas.scene.tokens.get(stranger.id)?.name === 'renamed by the counter probe' || undefined,
+    );
+    const delta = window.__ktsUpdates - before;
+    await stranger.delete();
+    return { landed: Boolean(landed), delta };
+  });
+
+  assert.equal(r.landed, true, 'the untracked token write never landed');
+  assert.equal(r.delta, 0, `counter reported ${r.delta} write(s) for a token it does not track`);
+});
+
+// ------------------------------------- entry point: the sheet header, not the API
+
+await step('knight sheet header offers the button and it opens the config window', async () => {
+  const r = await fw.executeInFoundry(async (k) => {
+    const actor = game.actors.get(k.actorId);
+    const sheet = await actor.sheet.render(true);
+    // Core wires header-button click handlers 500ms after the window is built.
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const button = sheet.element[0].querySelector('.header-button.multiToken');
+    button?.click();
+    const app = await window.__ktsPoll(() => {
+      const open = Object.values(actor.apps ?? {}).find((a) => a.constructor.name === 'MultiTokenConfig');
+      return open?.form ? open : undefined;
+    });
+    for (const instance of Object.values(actor.apps ?? {})) {
+      if (instance.constructor.name === 'MultiTokenConfig') await instance.close();
+    }
+    await sheet.close();
+    return { offered: Boolean(button), label: button?.textContent.trim() ?? '', opened: Boolean(app) };
+  }, knight);
+
+  assert.equal(r.offered, true, 'the knight sheet header offers no token-image button');
+  assert.ok(r.label, 'the token-image button renders without a label');
+  assert.equal(r.opened, true, 'clicking the header button did not open the config window');
 });
 
 // ------------------------------------------------- T1: save applies and backs
@@ -162,9 +212,12 @@ await step('partial save rejected: toast, window open, nothing written', async (
       const app = await window.__ktsOpenConfig(k.actorId);
       for (const [key, value] of Object.entries(k.textures)) app.form.elements.namedItem(key).value = value;
       app.form.elements.namedItem('tenueCivile').value = '';
+
+      // Sampled before the submit: sampling after it would score a write that
+      // already happened as "nothing written".
+      const before = window.__ktsUpdates;
       app.form.requestSubmit(app.form.querySelector('button[name="save"]'));
 
-      const before = window.__ktsUpdates;
       const toasted = await window.__ktsPoll(() =>
         Array.from(document.querySelectorAll('#notifications li')).some((li) => li.textContent.includes('renseignez'))
           ? true
@@ -250,6 +303,7 @@ await step('PNJ token is taken over by a wear swap (type gate removed)', async (
     async (f) => {
       const actor = await Actor.create({ name: 'E2E PNJ', type: 'pnj' });
       const tokenDoc = await TokenDocument.create({ actorId: actor.id, x: 8, y: 8 }, { parent: canvas.scene });
+      window.__ktsTrack(tokenDoc.id);
       const rendered = await window.__ktsPoll(
         () => canvas.tokens.placeables.some((t) => t.document.id === tokenDoc.id) || undefined,
       );
@@ -397,6 +451,88 @@ await step('double openTokenConfig keeps one window per actor', async () => {
   }, knight);
 
   assert.equal(r.windows, 1, `${r.windows} config windows open for the same actor`);
+});
+
+// ------------------------- T10: two tokens of one actor, one backup each of its own
+
+await step('two tokens of one actor swap and restore from their own backups', async () => {
+  const OTHER_ART = 'icons/svg/castle.svg';
+  const r = await fw.executeInFoundry(
+    async (k) => {
+      const actor = game.actors.get(k.actorId);
+      const wear = actor.system.wear;
+      const wanted = (id) => window.__ktsDoc(id).texture.src;
+
+      // T8 reset left the actor unconfigured; arm it again through the window.
+      const config = await window.__ktsOpenConfig(k.actorId);
+      for (const [key, value] of Object.entries(k.textures)) config.form.elements.namedItem(key).value = value;
+      const beforeSave = window.__ktsUpdates;
+      config.form.requestSubmit(config.form.querySelector('button[name="save"]'));
+      const armed = await window.__ktsPoll(() => (wanted(k.tokenId) === k.textures[wear] ? true : undefined));
+      const saveDelta = window.__ktsUpdates - beforeSave;
+
+      // Second token for the same actor, with artwork of its own.
+      const second = await TokenDocument.create(
+        { actorId: k.actorId, x: 20, y: 20, texture: { src: k.otherArt } },
+        { parent: canvas.scene },
+      );
+      window.__ktsTrack(second.id);
+      // Whether the draw-time sync or the wear change below claims it is the
+      // module's choice; settle the claim first so the swap count stays exact.
+      await window.__ktsPoll(() => (wanted(second.id) === k.textures[wear] ? true : undefined), 5000);
+
+      const beforeSwap = window.__ktsUpdates;
+      await actor.update({ 'system.wear': 'tenueCivile' });
+      const swapped = await window.__ktsPoll(() => {
+        const a = window.__ktsDoc(k.tokenId);
+        const b = window.__ktsDoc(second.id);
+        return a.texture.src === k.textures.tenueCivile && b.texture.src === k.textures.tenueCivile ? true : undefined;
+      });
+      const swapDelta = window.__ktsUpdates - beforeSwap;
+      const backups = {
+        first: window.__ktsDoc(k.tokenId).getFlag(k.moduleId, 'originalSrc'),
+        second: window.__ktsDoc(second.id).getFlag(k.moduleId, 'originalSrc'),
+      };
+
+      const reset = await window.__ktsOpenConfig(k.actorId);
+      const beforeReset = window.__ktsUpdates;
+      reset.form.requestSubmit(reset.form.querySelector('button[name="reset"]'));
+      const restored = await window.__ktsPoll(() => {
+        const a = window.__ktsDoc(k.tokenId);
+        const b = window.__ktsDoc(second.id);
+        const clean = (doc) => !('originalSrc' in (doc.flags[k.moduleId] ?? {}));
+        return a.texture.src === k.originalSrc && b.texture.src === k.otherArt && clean(a) && clean(b)
+          ? true
+          : undefined;
+      });
+      const resetDelta = window.__ktsUpdates - beforeReset;
+
+      const finalSrcs = { first: wanted(k.tokenId), second: wanted(second.id) };
+      await second.delete();
+      return {
+        wear,
+        armed: Boolean(armed),
+        saveDelta,
+        swapped: Boolean(swapped),
+        swapDelta,
+        backups,
+        restored: Boolean(restored),
+        resetDelta,
+        finalSrcs,
+      };
+    },
+    { ...knight, moduleId: MODULE_ID, textures: TEXTURES, otherArt: OTHER_ART },
+  );
+
+  assert.equal(r.armed, true, `re-arming the actor did not apply the ${r.wear} texture`);
+  assert.equal(r.saveDelta, 1, `re-arming issued ${r.saveDelta} token write(s); expected 1`);
+  assert.equal(r.swapped, true, 'both tokens did not take the tenueCivile texture');
+  assert.equal(r.swapDelta, 2, `wear change issued ${r.swapDelta} token write(s); expected one per token`);
+  assert.equal(r.backups.first, knight.originalSrc, 'the first token lost its backup');
+  assert.equal(r.backups.second, OTHER_ART, 'the second token did not back up its own artwork');
+  assert.equal(r.restored, true, 'reset did not restore each token to its own pre-swap artwork');
+  assert.equal(r.resetDelta, 4, `reset issued ${r.resetDelta} token write(s); expected two per token`);
+  assert.deepEqual(r.finalSrcs, { first: knight.originalSrc, second: OTHER_ART }, 'restored textures wrong');
 });
 
 // ------------------------------------------------------------------- teardown

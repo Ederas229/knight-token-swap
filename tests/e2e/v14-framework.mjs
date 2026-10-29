@@ -8,6 +8,7 @@
  *    English label.
  */
 import { chromium } from 'playwright';
+import { rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { FoundryTestFramework } from 'foundryvtt-test-framework';
 
@@ -20,6 +21,10 @@ export class V14Framework extends FoundryTestFramework {
   async _launchBrowser() {
     const { diceOverrideExtensionPath, headless } = this.config;
     const profile = fileURLToPath(new URL('../../.e2e-chrome-profile', import.meta.url));
+    // A run killed mid-flight leaves a Chrome singleton lock in the profile and
+    // the next launch then fails on it; the profile is disposable because the
+    // suite logs in again on every run.
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5 });
     this.context = await chromium.launchPersistentContext(profile, {
       headless: headless !== false,
       viewport: null,
