@@ -191,6 +191,9 @@ await step('knight sheet header offers the button and it opens the config window
         titled: titled?.trim() ?? '',
         labels,
         buttons,
+        // The world picks the language file, so compare against what this
+        // client would render rather than an English literal.
+        wanted: { save: game.i18n.localize('TOKENSWAP.Save'), reset: game.i18n.localize('TOKENSWAP.Reset') },
         otherOffered: Boolean(otherButton),
       };
     },
@@ -205,7 +208,9 @@ await step('knight sheet header offers the button and it opens the config window
   assert.equal(r.labels.length, 3, `expected three field labels, saw ${r.labels.length}`);
   const unlocalized = r.labels.filter((l) => l.startsWith('TOKENSWAP.'));
   assert.deepEqual(unlocalized, [], `field labels not localized: ${unlocalized.join(', ')}`);
-  assert.ok(r.buttons.includes('Reset'), `reset button label wrong: ${r.buttons.join(', ')}`);
+  const missingKeys = Object.entries(r.wanted).filter(([, value]) => value.startsWith('TOKENSWAP.'));
+  assert.deepEqual(missingKeys, [], `lang file is missing: ${missingKeys.map(([key]) => key).join(', ')}`);
+  assert.deepEqual(r.buttons, [r.wanted.save, r.wanted.reset], `button labels wrong: ${r.buttons.join(', ')}`);
   assert.equal(r.otherOffered, false, 'the button also appears on the sheet of a non-knight actor');
 });
 

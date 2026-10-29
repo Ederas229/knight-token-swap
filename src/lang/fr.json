@@ -5,6 +5,6 @@
   "TOKENSWAP.Wear.guardian": "Guardian",
   "TOKENSWAP.Wear.tenueCivile": "Tenue Civile",
   "TOKENSWAP.Save": "Enregistrer",
-  "TOKENSWAP.Reset": "Reset",
-  "TOKENSWAP.Error.Incomplete": "{title} : renseignez les trois textures, ou utilisez Reset pour tout effacer."
+  "TOKENSWAP.Reset": "Réinitialiser",
+  "TOKENSWAP.Error.Incomplete": "{title} : renseignez les trois textures, ou utilisez Réinitialiser pour tout effacer."
 }
