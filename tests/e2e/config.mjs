@@ -15,9 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
 
-async function localSettings() {
-  const localPath = join(here, 'config.local.mjs');
-  if (existsSync(localPath)) return (await import(pathToFileURL(localPath).href)).default ?? {};
+async function foundryConfigSettings() {
   try {
     const config = JSON.parse(await readFile(join(root, 'foundryconfig.json'), 'utf8'));
     const dataPath = Array.isArray(config.dataPath) ? config.dataPath[0] : config.dataPath;
@@ -25,6 +23,15 @@ async function localSettings() {
   } catch {
     return {};
   }
+}
+
+// Layered, not either/or: a partial config.local.mjs still inherits the
+// foundryconfig.json data path the example file promises.
+async function localSettings() {
+  const settings = await foundryConfigSettings();
+  const localPath = join(here, 'config.local.mjs');
+  if (!existsSync(localPath)) return settings;
+  return { ...settings, ...((await import(pathToFileURL(localPath).href)).default ?? {}) };
 }
 
 const local = await localSettings();

@@ -15,6 +15,9 @@ try {
   console.log('  Copied package index');
 } catch (err) {
   if (err.code !== 'ENOENT') throw err;
+  console.warn(
+    `  No package index at ${index}: the client's update check may stall the join and the suite will retry it`,
+  );
 }
 
 // Copied packages keep their hosted manifest URLs, so the Foundry server spends
