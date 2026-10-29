@@ -1,35 +1,32 @@
 import { MultiTokenConfig } from './multiTokenConfig.js';
-import { updateTokenTexture, checkCanvasToken, isFlagDefined } from './function.js';
+import { applyTokenTexture, applyTokenTexturesForActor, isModuleManaged } from './function.js';
 
 Hooks.once('init', async () => {
   console.log('knight-token-swap | Initializing knight-token-swap');
 });
 
-/**
- * Expose a tiny entry point on the game object, both so other modules can open
- * the configuration window and so it can be opened from the console for
- * debugging: game.knightTokenSwap.openTokenConfig(actor).
- */
 Hooks.once('ready', () => {
   game.knightTokenSwap = { MultiTokenConfig, openTokenConfig };
 });
 
 /**
- * Open the texture configuration window for a given actor.
- * @param {Actor} actor   The actor whose texture flags are edited.
+ * Reuses the open window: DocumentSheetV2 derives its app id from the
+ * document uuid, so a second instance would stack a duplicate window with
+ * the same id. The sheet registers itself in `document.apps` on first render.
  */
 function openTokenConfig(actor) {
-  new MultiTokenConfig({
-    document: actor,
-    window: { title: `Token Images — ${actor.name}` },
-  }).render(true);
+  const app =
+    Object.values(actor.apps ?? {}).find((instance) => instance instanceof MultiTokenConfig) ??
+    new MultiTokenConfig({
+      document: actor,
+      window: { title: `Token Images — ${actor.name}` },
+    });
+  app.render(true);
 }
 
 /**
- * Entry point for the Knight actor sheet. Core dispatches
- * `get<ClassName>HeaderButtons` for Application V1 sheets, which is why the hook
- * is named after the Knight system's `KnightSheet` class. The payload shape
- * below ({ class, icon, label, onclick }) is the V1 header button shape.
+ * KnightSheet is an Application V1 sheet, so core dispatches
+ * `get<ClassName>HeaderButtons` with the V1 button shape.
  */
 Hooks.on('getKnightSheetHeaderButtons', (sheet, buttons) => {
   if (!game.user.isGM) return;
@@ -44,11 +41,9 @@ Hooks.on('getKnightSheetHeaderButtons', (sheet, buttons) => {
 });
 
 /**
- * Forward compatibility for the day the Knight sheet becomes an Application V2
- * document sheet: core then dispatches `getHeaderControls<ClassName>` instead,
- * with control objects of a different shape ({ action, icon, label, onClick }).
- * Harmless while unused; confirm the exact hook name against the sheet class
- * name when the system migrates.
+ * Forward compatibility for when the Knight sheet becomes Application V2:
+ * core dispatches `getHeaderControls<ClassName>` with control objects of a
+ * different shape ({ action, icon, label, onClick }). Harmless while unused.
  */
 Hooks.on('getHeaderControlsKnightSheet', (sheet, controls) => {
   if (!game.user.isGM) return;
@@ -62,16 +57,21 @@ Hooks.on('getHeaderControlsKnightSheet', (sheet, controls) => {
   });
 });
 
+/**
+ * Sync freshly-drawn tokens; applyTokenTexture no-ops when the texture
+ * already matches, so scene loads issue no writes for correct tokens.
+ */
 Hooks.on('drawToken', async (token) => {
   if (!token.actor?.isOwner) return;
-  if (!isFlagDefined(token.actor)) return;
-  await updateTokenTexture(token, token.actor.system.wear);
+  if (!isModuleManaged(token)) return;
+  await applyTokenTexture(token);
 });
 
+/**
+ * Hook runs before the update commits, so the new wear is passed explicitly.
+ */
 Hooks.on('preUpdateActor', async (actor, data) => {
-  if (!data.system?.wear) return;
   if (actor.type !== 'knight') return;
-  if (!isFlagDefined(actor)) return;
-
-  await checkCanvasToken(actor, data.system.wear);
+  if (!(data.system && 'wear' in data.system)) return;
+  await applyTokenTexturesForActor(actor, data.system.wear);
 });

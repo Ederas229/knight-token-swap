@@ -1,17 +1,13 @@
 import { MODULENAME } from './const.js';
-import { checkCanvasToken } from './function.js';
+import { TEXTURE_FLAGS, applyTokenTexturesForActor } from './function.js';
 
 const { DocumentSheetV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 /**
- * An unregistered helper sheet for configuring the three token textures that
- * knight-token-swap stores as flags on a Knight actor.
- *
- * It extends DocumentSheetV2 rather than a plain ApplicationV2 so the Actor is
- * handed to the app as `options.document`: that gives us `this.document`, the
- * `isEditable` permission gate, automatic re-rendering when the flags change,
- * and an application id that DocumentSheetV2 derives from the document uuid, so
- * two actors can be configured in two windows at the same time.
+ * Configuration sheet for the three token textures stored as flags on a
+ * Knight actor. DocumentSheetV2 supplies `this.document`, the `isEditable`
+ * gate, re-rendering on flag changes, and a document-uuid app id, so two
+ * actors can be configured side by side.
  */
 export class MultiTokenConfig extends HandlebarsApplicationMixin(DocumentSheetV2) {
   static DEFAULT_OPTIONS = {
@@ -46,25 +42,32 @@ export class MultiTokenConfig extends HandlebarsApplicationMixin(DocumentSheetV2
   }
 
   /**
-   * Persist or clear the texture flags, depending on which button submitted the
-   * form, then refresh the textures of that actor's owned tokens. The base sheet
-   * would have written the submitted field names onto the Actor itself, which
-   * the Knight data model does not define, so the handler replaces it wholesale.
-   * Core binds `this` to the application and builds `formData` for us, then
-   * closes the window because `closeOnSubmit` is set.
-   * @param {SubmitEvent} event         The originating submit event.
-   * @param {HTMLFormElement} form      The form element that was submitted.
-   * @param {FormDataExtended} formData The submitted values.
+   * Write or clear the texture flags (the base handler would write the field
+   * names onto the Actor itself, which the Knight model doesn't define), then
+   * sync the actor's canvas tokens: Save applies the current wear's texture,
+   * Reset restores every managed token's pre-module artwork. The textures are
+   * all-or-nothing, so a partial save throws — core surfaces it as an error
+   * notification and leaves the window open.
    */
   static async _saveFlags(event, form, formData) {
+    if (!this.isEditable) return;
     const data = formData.object;
     const action = event.submitter?.name ?? 'save';
 
-    for (const [property, value] of Object.entries(data)) {
-      if (action === 'reset') await this.document.unsetFlag(MODULENAME, property);
-      else await this.document.setFlag(MODULENAME, property, value);
+    if (action === 'reset') {
+      for (const property of TEXTURE_FLAGS) await this.document.unsetFlag(MODULENAME, property);
+    } else {
+      const missing = TEXTURE_FLAGS.filter((property) => !data[property]);
+      if (missing.length) {
+        const title = game.modules.get(MODULENAME)?.title ?? MODULENAME;
+        throw new Error(`${title} : renseignez les trois textures, ou utilisez Reset pour tout effacer.`);
+      }
+      const changes = Object.fromEntries(
+        TEXTURE_FLAGS.map((property) => [`flags.${MODULENAME}.${property}`, data[property]]),
+      );
+      await this.document.update(changes);
     }
 
-    if (action !== 'reset') await checkCanvasToken(this.document, this.document.system.wear);
+    await applyTokenTexturesForActor(this.document);
   }
 }
