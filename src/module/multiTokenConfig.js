@@ -13,9 +13,10 @@ export class MultiTokenConfig extends HandlebarsApplicationMixin(DocumentSheetV2
   static DEFAULT_OPTIONS = {
     classes: ['knight-token-swap', 'multi-token-config'],
     tag: 'form',
+    // height omitted deliberately: ApplicationV2 ignores a non-numeric
+    // position.height ("auto"), and omitting it sizes the window to content.
     position: {
       width: 480,
-      height: 'auto',
     },
     window: {
       icon: 'fas fa-hexagon-image',
@@ -64,15 +65,17 @@ export class MultiTokenConfig extends HandlebarsApplicationMixin(DocumentSheetV2
     if (action === 'reset') {
       for (const property of TEXTURE_FLAGS) await this.document.unsetFlag(MODULENAME, property);
     } else {
-      // Trimmed: a space would otherwise be stored and later written into
-      // texture.src, where the canvas shows a broken image.
-      const missing = TEXTURE_FLAGS.filter((property) => !String(data[property] ?? '').trim());
+      // Trimmed before both validation and the write: a space would otherwise
+      // survive in a non-blank value and reach texture.src, where the canvas
+      // shows a broken image.
+      const values = Object.fromEntries(TEXTURE_FLAGS.map((p) => [p, String(data[p] ?? '').trim()]));
+      const missing = TEXTURE_FLAGS.filter((property) => !values[property]);
       if (missing.length) {
         const title = game.modules.get(MODULENAME)?.title ?? MODULENAME;
         throw new Error(game.i18n.format('TOKENSWAP.Error.Incomplete', { title }));
       }
       const changes = Object.fromEntries(
-        TEXTURE_FLAGS.map((property) => [`flags.${MODULENAME}.${property}`, data[property]]),
+        TEXTURE_FLAGS.map((property) => [`flags.${MODULENAME}.${property}`, values[property]]),
       );
       await this.document.update(changes);
     }

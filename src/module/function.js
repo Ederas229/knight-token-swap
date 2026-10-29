@@ -30,14 +30,11 @@ export function isModuleManaged(token) {
  * applies, restore the texture saved in `originalSrc` before the module first
  * overwrote it. No-op when the texture already matches: drawToken fires on
  * every canvas load and core does not skip no-change updates.
- * @param {string} [wear] Wear to apply instead of the actor's current one,
- *                        including an explicit null ("wear cleared → restore");
- *                        preUpdateActor runs before the change is committed.
  */
-export async function applyTokenTexture(token, wear) {
+export async function applyTokenTexture(token) {
   const doc = token.document;
   const actor = token.actor;
-  const state = wear !== undefined ? wear : actor?.system?.wear;
+  const state = actor?.system?.wear;
   const src = state ? actor?.getFlag(MODULENAME, state) : undefined;
   const backup = doc.getFlag(MODULENAME, 'originalSrc');
   const current = doc.texture.src;
@@ -85,12 +82,11 @@ export async function applyTokenTexture(token, wear) {
 /**
  * Sync every canvas token of a knight actor; tokens never managed by the module
  * are skipped so partial configuration can't touch custom artwork.
- * @param {string} [wear] Wear value to apply; see applyTokenTexture.
  */
-export async function applyTokenTexturesForActor(actor, wear) {
+export async function applyTokenTexturesForActor(actor) {
   if (!isSwapActor(actor)) return;
   for (const token of canvas.tokens?.ownedTokens ?? []) {
     if (token.actor?.id !== actor.id || !isModuleManaged(token)) continue;
-    await applyTokenTexture(token, wear);
+    await applyTokenTexture(token);
   }
 }

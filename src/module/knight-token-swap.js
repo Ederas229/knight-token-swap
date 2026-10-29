@@ -45,7 +45,8 @@ Hooks.on('getKnightSheetHeaderButtons', (sheet, buttons) => {
  */
 Hooks.on('getHeaderControlsKnightSheet', (sheet, controls) => {
   if (!game.user.isGM) return;
-  const actor = sheet.actor;
+  // V2 sheets expose the actor as `document`, not the V1 `actor` getter.
+  const actor = sheet.actor ?? sheet.document;
   if (!actor) return;
   controls.push({
     action: 'knight-token-swap.configure',
@@ -74,15 +75,16 @@ Hooks.on('drawToken', async (token) => {
 /**
  * Re-apply (or restore) textures as soon as a knight's wear changes; other
  * actor types are out of scope even though some carry a wear field, and the
- * per-token managed gate keeps unconfigured knights untouched. The hook runs
- * before the update commits, so the new wear is passed explicitly.
+ * per-token managed gate keeps unconfigured knights untouched. The sync runs
+ * post-commit on purpose: the Knight model can rewrite an incoming wear
+ * (`#checkArmor` pins a fresh knight), and only the committed value must
+ * drive the texture; updateActor also fires for remote updates, so another
+ * GM's change syncs on every client.
  */
-Hooks.on('preUpdateActor', async (actor, data) => {
+Hooks.on('updateActor', (actor, data) => {
   if (!isSwapActor(actor)) return;
   if (!(data.system && 'wear' in data.system)) return;
-  try {
-    await applyTokenTexturesForActor(actor, data.system.wear);
-  } catch (err) {
-    console.warn(`knight-token-swap | texture sync failed for actor ${actor.name}:`, err);
-  }
+  applyTokenTexturesForActor(actor).catch((err) =>
+    console.warn(`knight-token-swap | texture sync failed for actor ${actor.name}:`, err),
+  );
 });
