@@ -8,7 +8,10 @@
  *    English label.
  */
 import { chromium } from 'playwright';
+import { spawnSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { createConnection } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { FoundryTestFramework } from 'foundryvtt-test-framework';
 
@@ -136,5 +139,50 @@ export class V14Framework extends FoundryTestFramework {
       await new Promise((r) => setTimeout(r, 5000));
     }
     return false;
+  }
+
+  /**
+   * Back-to-back runs need a clean handover of the data directory: the base
+   * kill() does not reap the server's process tree, and the
+   * Config/options.json.lock the killed run leaves behind makes the next
+   * server abort with "already locked by another process".
+   */
+  async stop() {
+    const pid = this.serverProcess?.pid;
+    await super.stop();
+    if (pid) spawnSync('taskkill', ['/pid', String(pid), '/t', '/f'], { stdio: 'ignore' });
+    await this.#waitForServerDown();
+    this.#dropStaleLock();
+  }
+
+  async _spawnServer() {
+    await this.#waitForServerDown();
+    this.#dropStaleLock();
+    return super._spawnServer();
+  }
+
+  #dropStaleLock() {
+    const dataPath = this.config.testDataPath;
+    if (!dataPath) return;
+    // The lock is a directory Foundry creates; a hard-killed server leaves it.
+    rmSync(join(dataPath, 'Config', 'options.json.lock'), { recursive: true, force: true, maxRetries: 3 });
+  }
+
+  /** Only touch the lock file once nothing is serving the test port. */
+  async #waitForServerDown(timeoutMs = 30000) {
+    const port = this.config.foundryServerPort ?? 30000;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const serving = await new Promise((resolve) => {
+        const socket = createConnection({ host: '127.0.0.1', port }, () => {
+          socket.end();
+          resolve(true);
+        });
+        socket.once('error', () => resolve(false));
+      });
+      if (!serving) return;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new Error(`[e2e] port ${port} is still serving; a Foundry server for this data folder is still running`);
   }
 }
