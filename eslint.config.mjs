@@ -14,7 +14,7 @@ const compat = new FlatCompat({
 
 export default [
   {
-    ignores: ['**/dist'],
+    ignores: ['**/dist', '**/test-data'],
   },
   ...compat.extends(
     'eslint:recommended',
@@ -48,6 +48,15 @@ export default [
   },
   {
     files: ['./*.js', './*.cjs', './*.mjs'],
+
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
+    files: ['tests/**/*.mjs'],
 
     languageOptions: {
       globals: {
