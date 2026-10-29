@@ -1,5 +1,5 @@
 import { MultiTokenConfig } from './multiTokenConfig.js';
-import { applyTokenTexture, applyTokenTexturesForActor, isModuleManaged } from './function.js';
+import { applyTokenTexture, applyTokenTexturesForActor, isModuleManaged, isSwapActor } from './function.js';
 
 Hooks.once('init', async () => {
   console.log('knight-token-swap | Initializing knight-token-swap');
@@ -17,25 +17,23 @@ Hooks.once('ready', () => {
 function openTokenConfig(actor) {
   const app =
     Object.values(actor.apps ?? {}).find((instance) => instance instanceof MultiTokenConfig) ??
-    new MultiTokenConfig({
-      document: actor,
-      window: { title: `Token Images — ${actor.name}` },
-    });
+    new MultiTokenConfig({ document: actor });
   app.render(true);
 }
 
 /**
  * KnightSheet is an Application V1 sheet, so core dispatches
- * `get<ClassName>HeaderButtons` with the V1 button shape.
+ * `get<ClassName>HeaderButtons` with the V1 button shape. Core localizes the
+ * label and dispatches clicks by class, so the class stays module-namespaced.
  */
 Hooks.on('getKnightSheetHeaderButtons', (sheet, buttons) => {
   if (!game.user.isGM) return;
   const actor = sheet.actor;
   if (!actor) return;
   buttons.unshift({
-    class: 'multiToken',
+    class: 'knight-token-swap-config',
     icon: 'fas fa-hexagon-image',
-    label: 'Token Images',
+    label: 'TOKENSWAP.Configure',
     onclick: () => openTokenConfig(actor),
   });
 });
@@ -52,7 +50,7 @@ Hooks.on('getHeaderControlsKnightSheet', (sheet, controls) => {
   controls.push({
     action: 'knight-token-swap.configure',
     icon: 'fas fa-hexagon-image',
-    label: 'Token Images',
+    label: 'TOKENSWAP.Configure',
     onClick: () => openTokenConfig(actor),
   });
 });
@@ -64,7 +62,7 @@ Hooks.on('getHeaderControlsKnightSheet', (sheet, controls) => {
  * without this, failures would surface only as unhandled rejections.
  */
 Hooks.on('drawToken', async (token) => {
-  if (!token.actor?.isOwner) return;
+  if (!isSwapActor(token.actor) || !token.actor.isOwner) return;
   if (!isModuleManaged(token)) return;
   try {
     await applyTokenTexture(token);
@@ -74,12 +72,13 @@ Hooks.on('drawToken', async (token) => {
 });
 
 /**
- * Re-apply (or restore) textures as soon as wear changes, for any actor type
- * carrying a wear field (Knight and PNJ do); the per-token managed gate keeps
- * unconfigured actors untouched. The hook runs before the update commits, so
- * the new wear is passed explicitly.
+ * Re-apply (or restore) textures as soon as a knight's wear changes; other
+ * actor types are out of scope even though some carry a wear field, and the
+ * per-token managed gate keeps unconfigured knights untouched. The hook runs
+ * before the update commits, so the new wear is passed explicitly.
  */
 Hooks.on('preUpdateActor', async (actor, data) => {
+  if (!isSwapActor(actor)) return;
   if (!(data.system && 'wear' in data.system)) return;
   try {
     await applyTokenTexturesForActor(actor, data.system.wear);

@@ -1,7 +1,7 @@
 {
   "id": "knight-token-swap",
   "title": "Knight Token Swap",
-  "description": "",
+  "description": "Adds a Token Images panel to the Knight sheet that swaps the actor's token artwork to match its wear state (Meta-armure, Guardian, Tenue Civile), and restores the artwork it replaced when the current wear has no configured texture.",
   "authors": [
     {
       "name": "Ederas"
@@ -15,6 +15,18 @@
   },
   "esmodules": ["module/knight-token-swap.js"],
   "styles": [{ "src": "styles/knight-token-swap.css" }],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    },
+    {
+      "lang": "fr",
+      "name": "Français",
+      "path": "lang/fr.json"
+    }
+  ],
   "relationships": {
     "systems": [
       {

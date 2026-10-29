@@ -145,27 +145,60 @@ await step('write counter ignores tokens the suite does not own', async () => {
 // ------------------------------------- entry point: the sheet header, not the API
 
 await step('knight sheet header offers the button and it opens the config window', async () => {
-  const r = await fw.executeInFoundry(async (k) => {
-    const actor = game.actors.get(k.actorId);
-    const sheet = await actor.sheet.render(true);
-    // Core wires header-button click handlers 500ms after the window is built.
-    await new Promise((resolve) => setTimeout(resolve, 900));
-    const button = sheet.element[0].querySelector('.header-button.multiToken');
-    button?.click();
-    const app = await window.__ktsPoll(() => {
-      const open = Object.values(actor.apps ?? {}).find((a) => a.constructor.name === 'MultiTokenConfig');
-      return open?.form ? open : undefined;
-    });
-    for (const instance of Object.values(actor.apps ?? {})) {
-      if (instance.constructor.name === 'MultiTokenConfig') await instance.close();
-    }
-    await sheet.close();
-    return { offered: Boolean(button), label: button?.textContent.trim() ?? '', opened: Boolean(app) };
-  }, knight);
+  const r = await fw.executeInFoundry(
+    async (k) => {
+      const actor = game.actors.get(k.actorId);
+      const sheet = await actor.sheet.render(true);
+      // Core wires header-button click handlers 500ms after the window is built.
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      const button = sheet.element[0].querySelector('.header-button.knight-token-swap-config');
+      button?.click();
+      const app = await window.__ktsPoll(() => {
+        const open = Object.values(actor.apps ?? {}).find((a) => a.constructor.name === 'MultiTokenConfig');
+        return open?.form ? open : undefined;
+      });
+      const titled = app
+        ? document.querySelector(`#${CSS.escape(app.id)}`)?.querySelector('.window-title')?.textContent
+        : '';
+      const labels = app ? [...app.form.querySelectorAll('label')].map((l) => l.textContent.trim()) : [];
+      const buttons = app ? [...app.form.querySelectorAll('button[name]')].map((b) => b.textContent.trim()) : [];
+      for (const instance of Object.values(actor.apps ?? {})) {
+        if (instance.constructor.name === 'MultiTokenConfig') await instance.close();
+      }
+      await sheet.close();
+
+      // A PNJ carries the same wear field but is out of scope, so its sheet
+      // must not offer the panel.
+      const other = await Actor.create({ name: 'E2E Out Of Scope', type: 'pnj' });
+      const otherSheet = await other.sheet.render(true);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const otherButton = otherSheet.element[0].querySelector('.header-button.knight-token-swap-config');
+      await otherSheet.close();
+      await other.delete();
+
+      return {
+        offered: Boolean(button),
+        label: button?.textContent.trim() ?? '',
+        opened: Boolean(app),
+        titled: titled?.trim() ?? '',
+        labels,
+        buttons,
+        otherOffered: Boolean(otherButton),
+      };
+    },
+    { ...knight, moduleId: MODULE_ID },
+  );
 
   assert.equal(r.offered, true, 'the knight sheet header offers no token-image button');
-  assert.ok(r.label, 'the token-image button renders without a label');
+  assert.ok(r.label && !r.label.startsWith('TOKENSWAP.'), `header button label not localized: "${r.label}"`);
   assert.equal(r.opened, true, 'clicking the header button did not open the config window');
+  assert.ok(r.titled.includes('E2E Knight'), `config window title does not name the actor: "${r.titled}"`);
+  assert.ok(!r.titled.startsWith('TOKENSWAP.'), `config window title not localized: "${r.titled}"`);
+  assert.equal(r.labels.length, 3, `expected three field labels, saw ${r.labels.length}`);
+  const unlocalized = r.labels.filter((l) => l.startsWith('TOKENSWAP.'));
+  assert.deepEqual(unlocalized, [], `field labels not localized: ${unlocalized.join(', ')}`);
+  assert.ok(r.buttons.includes('Reset'), `reset button label wrong: ${r.buttons.join(', ')}`);
+  assert.equal(r.otherOffered, false, 'the button also appears on the sheet of a non-knight actor');
 });
 
 // ------------------------------------------------- T1: save applies and backs
@@ -205,45 +238,56 @@ await step('save applies the wear texture and backs up the replaced art', async 
 
 // ------------------------------------------------------ T2: partial save toast
 
-await step('partial save rejected: toast, window open, nothing written', async () => {
+await step('empty or blank texture rejected: toast, window open, nothing written', async () => {
   const r = await fw.executeInFoundry(
     async (k) => {
+      // Compare against the module's own localized message: the world decides
+      // which language file loaded, and the point is that a message appeared.
+      const expected = game.i18n.format('TOKENSWAP.Error.Incomplete', {
+        title: game.modules.get(k.moduleId)?.title ?? k.moduleId,
+      });
       const actor = game.actors.get(k.actorId);
       const app = await window.__ktsOpenConfig(k.actorId);
-      for (const [key, value] of Object.entries(k.textures)) app.form.elements.namedItem(key).value = value;
-      app.form.elements.namedItem('tenueCivile').value = '';
+      const attempts = [];
 
-      // Sampled before the submit: sampling after it would score a write that
-      // already happened as "nothing written".
-      const before = window.__ktsUpdates;
-      app.form.requestSubmit(app.form.querySelector('button[name="save"]'));
+      for (const blank of ['', ' ']) {
+        for (const [key, value] of Object.entries(k.textures)) app.form.elements.namedItem(key).value = value;
+        app.form.elements.namedItem('tenueCivile').value = blank;
 
-      const toasted = await window.__ktsPoll(() =>
-        Array.from(document.querySelectorAll('#notifications li')).some((li) => li.textContent.includes('renseignez'))
-          ? true
-          : undefined,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 500));
+        // Sampled before the submit: sampling after it would score a write that
+        // already happened as "nothing written".
+        const before = window.__ktsUpdates;
+        app.form.requestSubmit(app.form.querySelector('button[name="save"]'));
+        const toasted = await window.__ktsPoll(() =>
+          Array.from(document.querySelectorAll('#notifications li')).some((li) => li.textContent.includes(expected))
+            ? true
+            : undefined,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        ui.notifications.clear();
+        attempts.push({
+          blank: JSON.stringify(blank),
+          toasted: Boolean(toasted),
+          stillOpen: app.rendered,
+          delta: window.__ktsUpdates - before,
+          tenueCivile: actor.getFlag(k.moduleId, 'tenueCivile'),
+          src: window.__ktsDoc(k.tokenId).texture.src,
+        });
+      }
 
-      const result = {
-        toasted: Boolean(toasted),
-        stillOpen: app.rendered,
-        delta: window.__ktsUpdates - before,
-        tenueCivile: actor.getFlag(k.moduleId, 'tenueCivile'),
-        src: window.__ktsDoc(k.tokenId).texture.src,
-      };
-      ui.notifications.clear();
       await app.close();
-      return result;
+      return { attempts, expected };
     },
     { ...knight, moduleId: MODULE_ID, textures: TEXTURES },
   );
 
-  assert.equal(r.toasted, true, 'no validation toast appeared');
-  assert.equal(r.stillOpen, true, 'window closed despite a rejected save');
-  assert.equal(r.delta, 0, `rejected save issued ${r.delta} token write(s); expected none`);
-  assert.equal(r.tenueCivile, TEXTURES.tenueCivile, 'partial save overwrote the cleared flag');
-  assert.equal(r.src, TEXTURES[knight.wear], 'token texture changed after the rejected save');
+  for (const one of r.attempts) {
+    assert.equal(one.toasted, true, `no validation toast for tenueCivile=${one.blank} (wanted: ${r.expected})`);
+    assert.equal(one.stillOpen, true, `window closed despite a rejected save (${one.blank})`);
+    assert.equal(one.delta, 0, `rejected save (${one.blank}) issued ${one.delta} token write(s); expected none`);
+    assert.equal(one.tenueCivile, TEXTURES.tenueCivile, `rejected save (${one.blank}) overwrote the cleared flag`);
+    assert.equal(one.src, TEXTURES[knight.wear], `token texture changed after the rejected save (${one.blank})`);
+  }
 });
 
 // --------------------------------------------------------- T3: wear swap writes
@@ -295,10 +339,10 @@ await step('scene reload re-displays the texture with zero writes', async () => 
   assert.equal(r.delta, 0, `reload issued ${r.delta} token write(s); expected none`);
 });
 
-// ------------------------------------------------------ T5: PNJ takes over swap
+// ------------------------------------------- T5: other actor types are out of scope
 
 let pnj;
-await step('PNJ token is taken over by a wear swap (type gate removed)', async () => {
+await step('PNJ tokens stay untouched even when their actor carries the flags', async () => {
   pnj = await fw.executeInFoundry(
     async (f) => {
       const actor = await Actor.create({ name: 'E2E PNJ', type: 'pnj' });
@@ -310,6 +354,8 @@ await step('PNJ token is taken over by a wear swap (type gate removed)', async (
       if (!rendered) throw new Error('PNJ token never rendered on the canvas');
       const originalSrc = tokenDoc.texture.src;
 
+      // Flags written straight onto the actor: the per-token managed gate would
+      // consider this token managed, the type gate must not.
       const changes = Object.fromEntries(
         Object.entries(f.textures).map(([key, value]) => [`flags.${f.moduleId}.${key}`, value]),
       );
@@ -317,42 +363,58 @@ await step('PNJ token is taken over by a wear swap (type gate removed)', async (
 
       const before = window.__ktsUpdates;
       await actor.update({ 'system.wear': 'guardian' });
-      const applied = await window.__ktsPoll(() => {
-        const doc = window.__ktsDoc(tokenDoc.id);
-        return doc.texture.src === f.textures.guardian ? doc : undefined;
-      });
-
+      try {
+        await canvas.app.goto(canvas.scene);
+      } catch {
+        await canvas.draw();
+      }
+      const settled = await window.__ktsPoll(
+        () => canvas.tokens.placeables.some((t) => t.document.id === tokenDoc.id) || undefined,
+        30000,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const doc = window.__ktsDoc(tokenDoc.id);
       return {
         actorId: actor.id,
         tokenId: tokenDoc.id,
         originalSrc,
-        src: applied?.texture.src,
+        settled: Boolean(settled),
+        src: doc.texture.src,
+        wear: actor.system.wear,
         delta: window.__ktsUpdates - before,
-        backup: window.__ktsDoc(tokenDoc.id).getFlag(f.moduleId, 'originalSrc'),
+        backup: doc.getFlag(f.moduleId, 'originalSrc'),
       };
     },
     { moduleId: MODULE_ID, textures: TEXTURES },
   );
 
-  assert.equal(pnj.src, TEXTURES.guardian, 'PNJ token did not take the wear texture');
-  assert.equal(pnj.delta, 1, `PNJ swap issued ${pnj.delta} token write(s); expected 1`);
-  assert.equal(pnj.backup, pnj.originalSrc, 'PNJ swap did not record the pre-swap art');
+  assert.equal(pnj.settled, true, 'PNJ token disappeared from the canvas on reload');
+  assert.equal(pnj.wear, 'guardian', 'the PNJ wear change never landed');
+  assert.equal(pnj.delta, 0, `the module wrote ${pnj.delta} time(s) to a PNJ token`);
+  assert.equal(pnj.src, pnj.originalSrc, 'a PNJ token took the wear texture');
+  assert.equal(pnj.backup, undefined, 'the module claimed a PNJ token');
 });
 
-// ------------------------------------------- T6: unmapped wear restores PNJ art
+// --------------------------- T6: a wear state left without a texture restores art
 
-await step('PNJ wear to ascension restores the original art and releases the claim', async () => {
+await step('losing the current wear texture restores the art and releases the claim', async () => {
   const r = await fw.executeInFoundry(
-    async (p) => {
-      const actor = game.actors.get(p.actorId);
+    async (k) => {
+      const actor = game.actors.get(k.actorId);
+      await actor.unsetFlag(k.moduleId, 'guardian');
+
       const before = window.__ktsUpdates;
-      await actor.update({ 'system.wear': 'ascension' });
+      try {
+        await canvas.app.goto(canvas.scene);
+      } catch {
+        await canvas.draw();
+      }
       const released = await window.__ktsPoll(() => {
-        const doc = window.__ktsDoc(p.tokenId);
-        const done = doc.texture.src === p.originalSrc && !('originalSrc' in (doc.flags[p.moduleId] ?? {}));
+        const doc = window.__ktsDoc(k.tokenId);
+        const done = doc.texture.src === k.originalSrc && !('originalSrc' in (doc.flags[k.moduleId] ?? {}));
         return done ? doc : undefined;
-      });
-      const doc = window.__ktsDoc(p.tokenId);
+      }, 30000);
+      const doc = window.__ktsDoc(k.tokenId);
       return {
         released: Boolean(released),
         src: doc.texture.src,
@@ -360,50 +422,49 @@ await step('PNJ wear to ascension restores the original art and releases the cla
         delta: window.__ktsUpdates - before,
       };
     },
-    { ...pnj, moduleId: MODULE_ID },
+    { ...knight, moduleId: MODULE_ID },
   );
 
-  assert.equal(r.wear, 'ascension', `world snapped the PNJ wear back to "${r.wear}"; no unmapped state reached`);
-  assert.equal(r.released, true, `restore did not reach ${pnj.originalSrc} with the backup released (src=${r.src})`);
+  assert.equal(r.wear, 'guardian', `expected the wear to stay guardian, saw "${r.wear}"`);
+  assert.equal(r.released, true, `restore did not reach ${knight.originalSrc} with the claim released (src=${r.src})`);
   assert.equal(r.delta, 2, `restore issued ${r.delta} token writes; expected 2 (restore + unsetFlag)`);
 });
 
-// ------------------------------ T7: re-save at unmapped wear, then re-apply
+// ---------------------------------- T7: configure that wear again, then re-apply
 
-await step('PNJ re-save at an unmapped wear claims nothing; wear re-applies', async () => {
+await step('re-configuring the wear texture re-applies it and re-records the backup', async () => {
   const r = await fw.executeInFoundry(
-    async (p) => {
-      const actor = game.actors.get(p.actorId);
-      const app = await window.__ktsOpenConfig(p.actorId);
-      for (const [key, value] of Object.entries(p.textures)) app.form.elements.namedItem(key).value = value;
-      app.form.requestSubmit(app.form.querySelector('button[name="save"]'));
-      await window.__ktsPoll(() => (app.rendered ? undefined : true));
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    async (k) => {
+      const actor = game.actors.get(k.actorId);
+      const start = window.__ktsDoc(k.tokenId).texture.src;
 
-      const afterSave = window.__ktsDoc(p.tokenId);
-      const untouched = {
-        src: afterSave.texture.src,
-        backupPresent: 'originalSrc' in (afterSave.flags[p.moduleId] ?? {}),
-      };
+      await actor.setFlag(k.moduleId, 'guardian', k.textures.guardian);
+      const doc1 = window.__ktsDoc(k.tokenId);
+      const afterFlag = { src: doc1.texture.src, claimed: 'originalSrc' in (doc1.flags[k.moduleId] ?? {}) };
 
-      await actor.update({ 'system.wear': 'guardian' });
+      const before = window.__ktsUpdates;
+      await actor.update({ 'system.wear': 'tenueCivile' });
       const swapped = await window.__ktsPoll(() => {
-        const doc = window.__ktsDoc(p.tokenId);
-        return doc.texture.src === p.textures.guardian ? doc : undefined;
+        const doc = window.__ktsDoc(k.tokenId);
+        return doc.texture.src === k.textures.tenueCivile ? doc : undefined;
       });
       return {
-        untouched,
-        reApplied: Boolean(swapped),
-        backupReclaimed: 'originalSrc' in (window.__ktsDoc(p.tokenId).flags[p.moduleId] ?? {}),
+        start,
+        afterFlag,
+        src: swapped?.texture.src,
+        backup: window.__ktsDoc(k.tokenId).getFlag(k.moduleId, 'originalSrc'),
+        delta: window.__ktsUpdates - before,
       };
     },
-    { ...pnj, moduleId: MODULE_ID, textures: TEXTURES },
+    { ...knight, moduleId: MODULE_ID, textures: TEXTURES },
   );
 
-  assert.equal(r.untouched.src, pnj.originalSrc, 'save at an unmapped wear touched the token');
-  assert.equal(r.untouched.backupPresent, false, 'save at an unmapped wear claimed the token');
-  assert.equal(r.reApplied, true, 'token did not swap when wear returned to a mapped state');
-  assert.equal(r.backupReclaimed, true, 'backup not re-recorded when re-applying');
+  assert.equal(r.start, knight.originalSrc, 'the token did not start this step on the restored art');
+  assert.equal(r.afterFlag.src, knight.originalSrc, 'a flag written straight to the actor moved the token');
+  assert.equal(r.afterFlag.claimed, false, 'a flag written straight to the actor claimed the token');
+  assert.equal(r.src, TEXTURES.tenueCivile, 'token did not swap once the wear had a texture again');
+  assert.equal(r.backup, knight.originalSrc, 'backup not re-recorded when re-applying');
+  assert.equal(r.delta, 1, `re-applying issued ${r.delta} token write(s); expected 1`);
 });
 
 // ------------------------------------------------ T8: reset button restores all
@@ -461,6 +522,9 @@ await step('two tokens of one actor swap and restore from their own backups', as
     async (k) => {
       const actor = game.actors.get(k.actorId);
       const wear = actor.system.wear;
+      // Earlier steps move the wear around, so pick a mapped state the actor is
+      // not already in; a no-op update would hide the swap being counted.
+      const nextWear = wear === 'tenueCivile' ? 'guardian' : 'tenueCivile';
       const wanted = (id) => window.__ktsDoc(id).texture.src;
 
       // T8 reset left the actor unconfigured; arm it again through the window.
@@ -482,11 +546,11 @@ await step('two tokens of one actor swap and restore from their own backups', as
       await window.__ktsPoll(() => (wanted(second.id) === k.textures[wear] ? true : undefined), 5000);
 
       const beforeSwap = window.__ktsUpdates;
-      await actor.update({ 'system.wear': 'tenueCivile' });
+      await actor.update({ 'system.wear': nextWear });
       const swapped = await window.__ktsPoll(() => {
         const a = window.__ktsDoc(k.tokenId);
         const b = window.__ktsDoc(second.id);
-        return a.texture.src === k.textures.tenueCivile && b.texture.src === k.textures.tenueCivile ? true : undefined;
+        return a.texture.src === k.textures[nextWear] && b.texture.src === k.textures[nextWear] ? true : undefined;
       });
       const swapDelta = window.__ktsUpdates - beforeSwap;
       const backups = {
@@ -511,6 +575,7 @@ await step('two tokens of one actor swap and restore from their own backups', as
       await second.delete();
       return {
         wear,
+        nextWear,
         armed: Boolean(armed),
         saveDelta,
         swapped: Boolean(swapped),
@@ -526,7 +591,7 @@ await step('two tokens of one actor swap and restore from their own backups', as
 
   assert.equal(r.armed, true, `re-arming the actor did not apply the ${r.wear} texture`);
   assert.equal(r.saveDelta, 1, `re-arming issued ${r.saveDelta} token write(s); expected 1`);
-  assert.equal(r.swapped, true, 'both tokens did not take the tenueCivile texture');
+  assert.equal(r.swapped, true, `both tokens did not take the ${r.nextWear} texture`);
   assert.equal(r.swapDelta, 2, `wear change issued ${r.swapDelta} token write(s); expected one per token`);
   assert.equal(r.backups.first, knight.originalSrc, 'the first token lost its backup');
   assert.equal(r.backups.second, OTHER_ART, 'the second token did not back up its own artwork');

@@ -8,6 +8,15 @@ import { MODULENAME } from './const.js';
 export const TEXTURE_FLAGS = ['armure', 'guardian', 'tenueCivile'];
 
 /**
+ * The wear states these flags map belong to the knight actor type, so tokens
+ * of any other type stay out of reach even if something wrote flags onto their
+ * actor.
+ */
+export function isSwapActor(actor) {
+  return actor?.type === 'knight';
+}
+
+/**
  * True when the module manages this token: the actor has the flag record, or
  * the token carries an `originalSrc` backup from an earlier swap. Key presence
  * is the test, not truthiness: the backup may legitimately be null.
@@ -74,11 +83,12 @@ export async function applyTokenTexture(token, wear) {
 }
 
 /**
- * Sync every canvas token of an actor; tokens never managed by the module are
- * skipped so partial configuration can't touch custom artwork.
+ * Sync every canvas token of a knight actor; tokens never managed by the module
+ * are skipped so partial configuration can't touch custom artwork.
  * @param {string} [wear] Wear value to apply; see applyTokenTexture.
  */
 export async function applyTokenTexturesForActor(actor, wear) {
+  if (!isSwapActor(actor)) return;
   for (const token of canvas.tokens?.ownedTokens ?? []) {
     if (token.actor?.id !== actor.id || !isModuleManaged(token)) continue;
     await applyTokenTexture(token, wear);

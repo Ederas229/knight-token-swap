@@ -1,0 +1,10 @@
+{
+  "TOKENSWAP.Title": "Knight Token Swap",
+  "TOKENSWAP.Configure": "Knight Token Swap",
+  "TOKENSWAP.Wear.armure": "Meta-armure",
+  "TOKENSWAP.Wear.guardian": "Guardian",
+  "TOKENSWAP.Wear.tenueCivile": "Tenue Civile",
+  "TOKENSWAP.Save": "Enregistrer",
+  "TOKENSWAP.Reset": "Reset",
+  "TOKENSWAP.Error.Incomplete": "{title} : renseignez les trois textures, ou utilisez Reset pour tout effacer."
+}

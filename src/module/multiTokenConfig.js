@@ -18,7 +18,6 @@ export class MultiTokenConfig extends HandlebarsApplicationMixin(DocumentSheetV2
       height: 'auto',
     },
     window: {
-      title: 'Token Images',
       icon: 'fas fa-hexagon-image',
       resizable: true,
       contentClasses: ['standard-form'],
@@ -35,6 +34,14 @@ export class MultiTokenConfig extends HandlebarsApplicationMixin(DocumentSheetV2
       template: 'modules/knight-token-swap/templates/multitokenconfig.hbs',
     },
   };
+
+  /**
+   * DocumentSheetV2 titles the window from the document ("Knight: name"); this
+   * panel names itself and keeps the actor for context.
+   */
+  get title() {
+    return `${game.i18n.localize('TOKENSWAP.Title')}: ${this.document.name || this.document.id}`;
+  }
 
   /** @override */
   async _prepareContext() {
@@ -57,10 +64,12 @@ export class MultiTokenConfig extends HandlebarsApplicationMixin(DocumentSheetV2
     if (action === 'reset') {
       for (const property of TEXTURE_FLAGS) await this.document.unsetFlag(MODULENAME, property);
     } else {
-      const missing = TEXTURE_FLAGS.filter((property) => !data[property]);
+      // Trimmed: a space would otherwise be stored and later written into
+      // texture.src, where the canvas shows a broken image.
+      const missing = TEXTURE_FLAGS.filter((property) => !String(data[property] ?? '').trim());
       if (missing.length) {
         const title = game.modules.get(MODULENAME)?.title ?? MODULENAME;
-        throw new Error(`${title} : renseignez les trois textures, ou utilisez Reset pour tout effacer.`);
+        throw new Error(game.i18n.format('TOKENSWAP.Error.Incomplete', { title }));
       }
       const changes = Object.fromEntries(
         TEXTURE_FLAGS.map((property) => [`flags.${MODULENAME}.${property}`, data[property]]),
